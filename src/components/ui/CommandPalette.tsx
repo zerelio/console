@@ -12,7 +12,7 @@ const PAGES = [
   { path: '/graph', label: 'Graph', keywords: 'map topology visualize' },
   { path: '/changes', label: 'Changes', keywords: 'audit activity' },
   { path: '/settings', label: 'Settings', keywords: 'preferences account password' },
-  { path: '/admin', label: 'Admin', keywords: 'configuration license users' },
+  { path: '/admin', label: 'Admin', keywords: 'configuration users management' },
 ];
 
 export function CommandPalette() {

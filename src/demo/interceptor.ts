@@ -1,6 +1,6 @@
 // @ts-nocheck — demo interceptor, not worth typing the request matching
 import { DEMO_TOKEN } from './jwt';
-import { NODES, EDGES, CHANGES, SCOPES, RUNS, DOCS_LIST, getDocPage, RUNBOOKS, PROFILES, USERS, LICENSE, CONFIG, MERMAID_DIAGRAM, TERRAFORM_DRIFT, getQAAnswer, computeBlast } from './fixtures';
+import { NODES, EDGES, CHANGES, SCOPES, RUNS, DOCS_LIST, getDocPage, RUNBOOKS, PROFILES, USERS, CONFIG, MERMAID_DIAGRAM, TERRAFORM_DRIFT, getQAAnswer, computeBlast } from './fixtures';
 
 let installed = false;
 
@@ -248,8 +248,7 @@ export function installDemoInterceptor() {
     }
 
     // ─── License ────────────────────────────────────────────────────────────
-    if (p === '/api/v1/license') return json({ data: LICENSE });
-    if (p === '/api/v1/license/activate' && method === 'POST') return json({ data: { ...LICENSE, activated: true } });
+    // license endpoints removed — Zerelio is FOSS
 
     // ─── Admin Users ────────────────────────────────────────────────────────
     if (p === '/api/v1/admin/users' || p === '/api/v1/admin/users/') {

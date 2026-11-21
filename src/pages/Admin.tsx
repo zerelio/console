@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const ADMIN_SECTIONS = [
-  { id: 'license', label: 'License' },
   { id: 'users', label: 'Users' },
   { id: 'scim', label: 'SCIM' },
   { id: 'management', label: 'Management' },
@@ -51,7 +50,7 @@ interface User {
 
 export function Admin() {
   const navigate = useNavigate();
-  const [license, setLicense] = useState<any>(null);
+  // License state removed — Zerelio is FOSS, no license gate
   const [config, setConfig] = useState<any>(null);
   const [profiles, setProfiles] = useState<LLMProfile[]>([]);
   const [editingProfile, setEditingProfile] = useState<LLMProfile | null>(null);
@@ -65,9 +64,6 @@ export function Admin() {
   const [testing, setTesting] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [testMsg, setTestMsg] = useState('');
-  const [licenseKey, setLicenseKey] = useState('');
-  const [activating, setActivating] = useState(false);
-  const [activationMsg, setActivationMsg] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [userNewEmail, setUserNewEmail] = useState('');
@@ -145,10 +141,7 @@ export function Admin() {
 
   useEffect(() => {
     document.title = 'Admin - Zerelio';
-    fetch('/api/v1/license').then(r => r.json()).then(d => setLicense(d && d.data ? d.data : d || null)).catch(() => {
-      console.warn("Admin: license unavailable");
-      setLicense({ licensed: false, tier: 'community', max_resources: 50, max_users: 5, limits: { max_resources: 50, max_users: 5 } });
-    });
+    // License fetch removed — Zerelio is FOSS, no license gate
     fetch('/api/v1/admin/config').then(r => r.json()).then(d => {
       const c = (d && d.data) || d || {};
       setConfig(c);
@@ -584,27 +577,7 @@ export function Admin() {
     finally { setRunbookContextSaving(false); }
   }
 
-  async function handleActivateLicense() {
-    if (!licenseKey.trim()) return;
-    setActivating(true);
-    setActivationMsg('');
-    try {
-      const res = await fetch('/api/v1/license/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: licenseKey }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setActivationMsg('License activated successfully');
-        setLicense(data.data || data);
-      } else {
-        setActivationMsg('Error: ' + ((data as any).error || data.data?.error || 'activation failed'));
-      }
-    } catch (e: any) {
-      setActivationMsg('Error: ' + e.message);
-    } finally { setActivating(false); }
-  }
+  // handleActivateLicense removed — Zerelio is FOSS
 
   function selectSSOTemplate(template: any) {
     setSelectedSsoTemplate(template);
@@ -698,36 +671,8 @@ export function Admin() {
         <div className="flex-1 min-w-0 space-y-8">
           <div>
             <h1 className="text-2xl font-semibold">Administration</h1>
-            <p className="text-[#8b8b8e] mt-1">Manage license, LLM profiles, and system settings</p>
+            <p className="text-[#8b8b8e] mt-1">Manage users, LLM profiles, and system settings</p>
           </div>
-
-      {/* License */}
-      <section ref={el => sectionRefs.current['license'] = el} className="rounded-xl p-6" style={cardStyle()}>
-        {renderToggle('license', 'License')}
-        {!collapsedSections['license'] && (license ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><span className="text-[#8b8b8e]">Status</span><br/><span className={license.licensed ? 'text-[#2ed573]' : 'text-[#ff4757]'}>{license.licensed ? 'Active' : 'Inactive'}</span></div>
-              <div><span className="text-[#8b8b8e]">Tier</span><br/><span className="capitalize">{license.tier || 'community'}</span></div>
-              <div><span className="text-[#8b8b8e]">Resources</span><br/><span>{license.max_resources || license.limits?.max_resources || 50} max</span></div>
-              <div><span className="text-[#8b8b8e]">Users</span><br/><span>{license.max_users || license.limits?.max_users || 5} max</span></div>
-            </div>
-            <div style={{ borderTop: '1px solid hsl(var(--border))' }} className="pt-4">
-              <label className="text-sm text-[#8b8b8e] block mb-1">Activate License Key</label>
-              <div className="flex gap-2">
-                <input type="text" value={licenseKey} onChange={e => setLicenseKey(e.target.value)}
-                  placeholder="Enter Ed25519 license key..."
-                  className="flex-1 px-3 py-2 rounded-lg text-sm focus:outline-none focus:border-[#6c5ce7]/50" style={inputStyle()} />
-                <button onClick={handleActivateLicense} disabled={activating || !licenseKey.trim()}
-                  className="px-4 py-2 bg-[#6c5ce7] hover:bg-[#5a4bd1] disabled:opacity-50 text-white rounded-lg text-sm font-medium">
-                  {activating ? 'Activating...' : 'Activate'}
-                </button>
-              </div>
-              {activationMsg && <p className={`text-sm mt-2 ${activationMsg.startsWith('Error') ? 'text-[#ff4757]' : 'text-[#2ed573]'}`}>{activationMsg}</p>}
-            </div>
-          </div>
-        ) : <p className="text-sm text-[#5c5c5e]">Loading license...</p>)}
-      </section>
 
       {/* User Management */}
       <section ref={el => sectionRefs.current['users'] = el} className="rounded-xl p-6" style={cardStyle()}>
@@ -1431,7 +1376,7 @@ Postmortem: Blameless RCA within 48h, tracked in Linear project INFRA`}
               <div>
                 <label className="text-xs text-[#8b8b8e] block mb-1">Name</label>
                 <input type="text" value={ragEditingName} onChange={e => setRagEditingName(e.target.value)}
-                  placeholder="e.g. nahcrof, direct-gpt, local-ollama" disabled={!!ragEditingProfile}
+                  placeholder="e.g. openai, local-ollama, anthropic" disabled={!!ragEditingProfile}
                   className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none" style={inputStyle()} />
               </div>
               <div>

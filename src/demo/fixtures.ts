@@ -191,8 +191,7 @@ export const PROFILES = [
   { name: 'cheap', provider: 'openai', model: 'gpt-4o-mini', base_url: 'https://api.openai.com', api_key: 'sk-***demo***', is_default: false },
 ];
 
-// ─── License ────────────────────────────────────────────────────────────────────
-export const LICENSE = { licensed: true, tier: 'enterprise', max_resources: 100000, max_users: 10000, features: ['advanced', 'team', 'enterprise'], expires_at: '2027-01-01T00:00:00Z' };
+// License fixture removed — Zerelio is FOSS, no license gate
 
 // ─── Config ─────────────────────────────────────────────────────────────────────
 export const CONFIG = { features: { graph_grouped: true, tree_view: true, blast_radius: true, architecture_diagrams: true }, llm: { default_profile: 'primary' } };
