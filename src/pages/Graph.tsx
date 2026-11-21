@@ -720,7 +720,7 @@ export function Graph() {
   // ─── Trace impact ───────────────────────────────────────────────────────
   async function traceImpact(nodeId: string) {
     try {
-      const res = await fetch('/api/v1/graph/blast/' + encodeURIComponent(nodeId));
+      const res = await fetch('/api/v1/graph/neighborhood/' + encodeURIComponent(nodeId) + '?hops=2');
       const data = await res.json();
       const gd = data.data || data;
       const impacted: string[] = (gd.impacted || []).map((h: any) => h.resource_id);
@@ -1214,9 +1214,9 @@ export function Graph() {
                     <div className="space-y-2">
                       <button onClick={async () => {
                         try {
-                          const res = await fetch('/api/v1/docs/resource/' + encodeURIComponent(n.id));
+                          const res = await fetch('/api/v1/docs/' + encodeURIComponent(n.id));
                           const data = await res.json();
-                          if (data.doc && data.doc.id) navigate('/docs/' + data.doc.id);
+                          if (data.data?.id || data.id) navigate('/docs/' + (data.data?.id || data.id));
                           else navigate('/docs');
                         } catch { navigate('/docs'); }
                       }} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all" style={{ background: colorWithAlpha(color, 0.12), color, border: '1px solid ' + colorWithAlpha(color, 0.3) }}>
@@ -1224,9 +1224,9 @@ export function Graph() {
                       </button>
                       <button onClick={async () => {
                         try {
-                          const res = await fetch('/api/v1/runbooks/resource/' + encodeURIComponent(n.id));
+                          const res = await fetch('/api/v1/runbooks/' + encodeURIComponent(n.id));
                           const data = await res.json();
-                          if (data.runbook && data.runbook.id) navigate('/runbooks/' + data.runbook.id);
+                          if (data.runbook?.id || data.data?.id) navigate('/runbooks/' + (data.runbook?.id || data.data?.id));
                           else navigate('/runbooks');
                         } catch { navigate('/runbooks'); }
                       }} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all" style={{ background: colorWithAlpha('#6c5ce7', 0.1), color: '#6c5ce7', border: '1px solid rgba(108,92,231,0.25)' }}>

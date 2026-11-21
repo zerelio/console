@@ -101,9 +101,9 @@ export function installDemoInterceptor() {
     if (p === '/api/v1/graph/diagram') {
       return json({ data: { diagram: MERMAID_DIAGRAM } });
     }
-    const blastMatch = p.match(/^\/api\/v1\/graph\/blast\/(.+)$/);
-    if (blastMatch) {
-      const nodeId = decodeURIComponent(blastMatch[1]);
+    const neighborhoodMatch = p.match(/^\/api\/v1\/graph\/neighborhood\/(.+)$/);
+    if (neighborhoodMatch) {
+      const nodeId = decodeURIComponent(neighborhoodMatch[1]);
       return json({ data: { impacted: computeBlast(nodeId).map(id => ({ resource_id: id })) } });
     }
 
@@ -238,6 +238,14 @@ export function installDemoInterceptor() {
       }
       return json({ data: RUNS.slice(0, 20) });
     }
+    const scopeRunMatch = p.match(/^\/api\/v1\/discovery\/scopes\/([^/]+)\/run$/);
+    if (scopeRunMatch) {
+      if (method === 'POST') {
+        const run = { id: `run-${Date.now()}`, scope_id: scopeRunMatch[1], status: 'running', started_at: new Date().toISOString() };
+        RUNS.unshift(run);
+        return json({ data: run }, 202);
+      }
+    }
     if (p === '/api/v1/discovery/demo-run' && method === 'POST') {
       await delay(2800);
       return json({ data: { nodes_found: 38, edges_found: 38, resource_types: 12 } });
@@ -350,7 +358,7 @@ export function installDemoInterceptor() {
     }
 
     // --- Webhooks ----------------------------------------------------------------
-    if (p === '/api/v1/admin/notifications/webhooks' || p === '/api/v1/admin/notifications/webhooks/') {
+    if (p === '/api/v1/webhooks' || p === '/api/v1/webhooks/') {
       if (method === 'POST') {
         const wh = { id: `wh-${Date.now()}`, url: body.url, events: body.events || [], secret: body.secret || '', created_at: new Date().toISOString() };
         return json({ data: wh }, 201);
@@ -360,26 +368,9 @@ export function installDemoInterceptor() {
         { id: 'wh-2', url: 'https://hooks.slack.com/webhook', events: ['change.detected'], created_at: '2026-05-12T08:30:00Z' },
       ] });
     }
-    const whMatch = p.match(/^\/api\/v1\/admin\/notifications\/webhooks\/(.+)$/);
+    const whMatch = p.match(/^\/api\/v1\/webhooks\/(.+)$/);
     if (whMatch) {
       if (method === 'DELETE') return json({ data: { status: 'deleted' } });
-    }
-    if (p === '/api/v1/admin/notifications/test' && method === 'POST') {
-      const targetUrl = body.url || 'https://hooks.example.com/events';
-      const latency = 80 + Math.floor(Math.random() * 200);
-      const success = Math.random() > 0.15;
-      return json({
-        data: {
-          total: 1,
-          results: [{
-            webhook_id: 'wh-test',
-            url: targetUrl,
-            success,
-            latency_ms: latency,
-            ...(success ? {} : { error: 'unexpected status: 502' }),
-          }],
-        },
-      });
     }
 
 
@@ -503,10 +494,10 @@ spec:
 	          'terraform.imported': 93,
 	        },
 	        by_actor: {
-	          'admin@knowledgetree.dev': 412,
-	          'alice@knowledgetree.dev': 186,
-	          'bob@knowledgetree.dev': 134,
-	          'ci-bot@knowledgetree.dev': 93,
+	          'admin@zerelio.local': 412,
+	          'alice@zerelio.local': 186,
+	          'bob@zerelio.local': 134,
+	          'ci-bot@zerelio.local': 93,
 	          'system': 22,
 	        },
 	        per_day: Array.from({ length: 30 }, (_, i) => {
@@ -520,7 +511,7 @@ spec:
 	    const auditMatch = p.match(/^\/api\/v1\/admin\/audit(\/.*)?$/);
 	    if (auditMatch && !auditMatch[1]) {
 	      const eventTypes = ['user.login', 'user.created', 'user.deleted', 'scope.created', 'scope.deleted', 'discovery.started', 'discovery.completed', 'terraform.imported'];
-	      const actors = ['admin@knowledgetree.dev', 'alice@knowledgetree.dev', 'bob@knowledgetree.dev', 'ci-bot@knowledgetree.dev', 'system'];
+	      const actors = ['admin@zerelio.local', 'alice@zerelio.local', 'bob@zerelio.local', 'ci-bot@zerelio.local', 'system'];
 	      const resourceTypes = ['user', 'scope', 'discovery_run', 'terraform'];
 	      const detailsMap: Record<string, any> = {
 	        'user.login': null,
@@ -594,6 +585,12 @@ spec:
     }
     if (p === '/api/v1/admin/compliance/results' && method === 'GET') {
       return json({ data: { results: [] }});
+    }
+    if (p === '/api/v1/compliance/findings' && method === 'GET') {
+      return json([
+        { id: 'f1', policy_id: 'p1', resource_id: 'aws:ec2:bastion-host', rule: 'soc2_owner_tags', severity: 'high', status: 'open', message: 'Resource missing owner tag', created_at: '2026-06-15T10:00:00Z' },
+        { id: 'f2', policy_id: 'p2', resource_id: 'k8s:deployment:payment-service', rule: 'pcidss_encryption', severity: 'critical', status: 'open', message: 'Payment service not encrypted', created_at: '2026-06-15T10:00:00Z' },
+      ]);
     }
     if (p === '/api/v1/admin/compliance/findings' && method === 'GET') {
       return json({ data: { findings: [

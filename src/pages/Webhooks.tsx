@@ -8,19 +8,6 @@ interface Webhook {
   created_at: string;
 }
 
-interface TestResult {
-  webhook_id: string;
-  url: string;
-  success: boolean;
-  error?: string;
-  latency_ms: number;
-}
-
-interface TestResponse {
-  total: number;
-  results: TestResult[];
-}
-
 const WEBHOOK_EVENTS = [
   { value: 'discovery.completed', label: 'Discovery Completed' },
   { value: 'drift.detected', label: 'Drift Detected' },
@@ -38,10 +25,6 @@ export function Webhooks() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [testMsg, setTestMsg] = useState('');
-  const [testingWebhook, setTestingWebhook] = useState<string | null>(null);
-  const [testResults, setTestResults] = useState<TestResult[]>([]);
-  const [showTestResults, setShowTestResults] = useState(false);
-  const [deliveryLog, setDeliveryLog] = useState<Record<string, { lastStatus: string; lastTested: string }>>({});
 
   useEffect(() => {
     loadWebhooks();
@@ -50,7 +33,7 @@ export function Webhooks() {
   async function loadWebhooks() {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/admin/notifications/webhooks');
+      const res = await fetch('/api/v1/webhooks');
       const d = await res.json();
       const list = d && d.data ? d.data : Array.isArray(d) ? d : [];
       setWebhooks(list);
@@ -75,7 +58,7 @@ export function Webhooks() {
     try {
       const body: Record<string, any> = { url: addUrl, events: addEvents };
       if (addSecret.trim()) body.secret = addSecret.trim();
-      const res = await fetch('/api/v1/admin/notifications/webhooks', {
+      const res = await fetch('/api/v1/webhooks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -99,7 +82,7 @@ export function Webhooks() {
   async function handleDeleteWebhook(id: string) {
     if (!window.confirm('Delete this webhook?')) return;
     try {
-      const res = await fetch(`/api/v1/admin/notifications/webhooks/${encodeURIComponent(id)}`, {
+      const res = await fetch(`/api/v1/webhooks/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
       if (res.ok) {
@@ -113,57 +96,8 @@ export function Webhooks() {
     }
   }
 
-  async function handleTestAll() {
-    setTestingWebhook('all');
-    setTestMsg('');
-    setTestResults([]);
-    setShowTestResults(true);
-    try {
-      const res = await fetch('/api/v1/admin/notifications/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const d = await res.json();
-      const data: TestResponse = d && d.data ? d.data : d;
-      setTestResults(data.results || []);
-      const log: Record<string, { lastStatus: string; lastTested: string }> = {};
-      for (const r of data.results || []) {
-        log[r.webhook_id] = {
-          lastStatus: r.success ? 'success' : 'failed',
-          lastTested: new Date().toISOString(),
-        };
-      }
-      setDeliveryLog(prev => ({ ...prev, ...log }));
-    } catch {
-      setTestMsg('Error: connection failed');
-    } finally {
-      setTestingWebhook(null);
-    }
-  }
-
-  async function handleTestSingle(wh: Webhook) {
-    setTestingWebhook(wh.id);
-    setTestMsg('');
-    try {
-      const res = await fetch('/api/v1/admin/notifications/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: wh.url, events: wh.events }),
-      });
-      const d = await res.json();
-      const data = d && d.data ? d.data : d;
-      if (data.success !== undefined) {
-        setDeliveryLog(prev => ({
-          ...prev,
-          [wh.id]: { lastStatus: data.success ? 'success' : 'failed', lastTested: new Date().toISOString() },
-        }));
-      }
-    } catch {
-      setTestMsg('Error: connection failed');
-    } finally {
-      setTestingWebhook(null);
-    }
+  function handleTestSingle(_wh: Webhook) {
+    setTestMsg('Test endpoint not available');
   }
 
   function cardStyle(): React.CSSProperties {
@@ -182,22 +116,12 @@ export function Webhooks() {
             Register webhook endpoints to receive events from Zerelio
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleTestAll}
-            disabled={testingWebhook === 'all' || webhooks.length === 0}
-            className="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-            style={{ background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))' }}
-          >
-            {testingWebhook === 'all' ? 'Testing...' : 'Test All'}
-          </button>
-          <button
-            onClick={() => { setShowAddForm(!showAddForm); setMsg(''); }}
-            className="px-4 py-2 bg-[#6c5ce7] hover:bg-[#5a4bd1] text-white rounded-lg text-sm font-medium"
-          >
-            + Add Webhook
-          </button>
-        </div>
+        <button
+          onClick={() => { setShowAddForm(!showAddForm); setMsg(''); }}
+          className="px-4 py-2 bg-[#6c5ce7] hover:bg-[#5a4bd1] text-white rounded-lg text-sm font-medium"
+        >
+          + Add Webhook
+        </button>
       </div>
 
       {/* Add Webhook Form */}
@@ -297,108 +221,56 @@ export function Webhooks() {
           </div>
         ) : (
           <div className="space-y-3">
-            {webhooks.map(wh => {
-              const log = deliveryLog[wh.id];
-              return (
-                <div
-                  key={wh.id}
-                  className="p-4 rounded-lg"
-                  style={{ background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))' }}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium truncate">{wh.url}</span>
-                        {log && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                            log.lastStatus === 'success' ? 'bg-[#2ed573]/10 text-[#2ed573]' : 'bg-[#ff4757]/10 text-[#ff4757]'
-                          }`}>
-                            {log.lastStatus}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {wh.events.map(ev => (
-                          <span
-                            key={ev}
-                            className="text-[10px] px-2 py-0.5 rounded-full bg-[#6c5ce7]/10 text-[#6c5ce7]"
-                          >
-                            {ev}
-                          </span>
-                        ))}
-                      </div>
-                      {wh.secret && (
-                        <p className="text-[10px] text-[#5c5c5e] mt-2">
-                          Signed with HMAC-SHA256
-                        </p>
-                      )}
-                      {log && (
-                        <p className="text-[10px] text-[#5c5c5e] mt-1">
-                          Last tested: {new Date(log.lastTested).toLocaleString()}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex gap-2 ml-4 shrink-0">
-                      <button
-                        onClick={() => handleTestSingle(wh)}
-                        disabled={testingWebhook === wh.id}
-                        className="text-xs px-2 py-1 rounded hover:bg-[hsl(var(--border))] disabled:opacity-50"
-                      >
-                        {testingWebhook === wh.id ? 'Testing...' : 'Test'}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteWebhook(wh.id)}
-                        className="text-xs px-2 py-1 rounded text-[#ff4757] hover:bg-[hsl(0,85%,60%,0.1)]"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Test Results */}
-      {showTestResults && testResults.length > 0 && (
-        <section className="rounded-xl p-6" style={cardStyle()}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-[#5c5c5e]">Test Results</h2>
-            <button
-              onClick={() => setShowTestResults(false)}
-              className="text-xs px-2 py-1 rounded hover:bg-[hsl(var(--border))]"
-            >
-              Dismiss
-            </button>
-          </div>
-          <div className="space-y-2">
-            {testResults.map((r, i) => (
+            {webhooks.map(wh => (
               <div
-                key={i}
-                className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm"
-                style={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}
+                key={wh.id}
+                className="p-4 rounded-lg"
+                style={{ background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))' }}
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${
-                    r.success ? 'bg-[#2ed573]' : 'bg-[#ff4757]'
-                  }`} />
-                  <span className="truncate text-xs text-[#8b8b8e]">{r.url}</span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 text-xs text-[#5c5c5e]">
-                  <span>{r.latency_ms}ms</span>
-                  {!r.success && <span className="text-[#ff4757]">{r.error || 'failed'}</span>}
-                  {r.success && <span className="text-[#2ed573]">OK</span>}
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium truncate">{wh.url}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {wh.events.map(ev => (
+                        <span
+                          key={ev}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-[#6c5ce7]/10 text-[#6c5ce7]"
+                        >
+                          {ev}
+                        </span>
+                      ))}
+                    </div>
+                    {wh.secret && (
+                      <p className="text-[10px] text-[#5c5c5e] mt-2">
+                        Signed with HMAC-SHA256
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 ml-4 shrink-0">
+                    <button
+                      onClick={() => handleTestSingle(wh)}
+                      className="text-xs px-2 py-1 rounded hover:bg-[hsl(var(--border))]"
+                    >
+                      Test
+                    </button>
+                    <button
+                      onClick={() => handleDeleteWebhook(wh.id)}
+                      className="text-xs px-2 py-1 rounded text-[#ff4757] hover:bg-[hsl(0,85%,60%,0.1)]"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {testMsg && (
-        <p className={`text-sm ${testMsg.startsWith('Error') ? 'text-[#ff4757]' : 'text-[#2ed573]'}`}>{testMsg}</p>
+        <p className="text-sm text-[#8b8b8e]">{testMsg}</p>
       )}
     </div>
   );

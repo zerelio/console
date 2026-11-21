@@ -1,4 +1,4 @@
-export const DEMO_USER = { user_id: 'u-demo-001', email: 'demo@knowledgetree.example', roles: ['admin', 'editor', 'viewer'] };
+export const DEMO_USER = { user_id: 'u-demo-001', email: 'demo@zerelio.local', roles: ['admin', 'editor', 'viewer'] };
 
 const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
 const payload = btoa(JSON.stringify(DEMO_USER));

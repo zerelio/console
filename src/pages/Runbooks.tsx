@@ -20,8 +20,8 @@ interface ResourceNode {
 
 export function Runbooks() {
   const [generating, setGenerating] = useState(false);
-  const [genStatus, setGenStatus] = useState<string | null>(localStorage.getItem('kt_runbook_gen_status'));
-  const [genError, setGenError] = useState<string | null>(sessionStorage.getItem('kt_runbook_gen_error'));
+  const [genStatus, setGenStatus] = useState<string | null>(localStorage.getItem('zerelio_runbook_gen_status'));
+  const [genError, setGenError] = useState<string | null>(sessionStorage.getItem('zerelio_runbook_gen_error'));
   const [prevErrors, setPrevErrors] = useState<string[]>([]);
   const [runbooks, setRunbooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +42,7 @@ export function Runbooks() {
   useEffect(() => {
     document.title = 'Runbooks - Zerelio';
     // Load persisted errors from session storage
-    const savedErrors = sessionStorage.getItem('kt_runbook_error_history');
+    const savedErrors = sessionStorage.getItem('zerelio_runbook_gen_error_history');
     if (savedErrors) {
       try { setPrevErrors(JSON.parse(savedErrors)); } catch {}
     }
@@ -75,7 +75,7 @@ export function Runbooks() {
 
   // Persist error history to session storage
   useEffect(() => {
-    sessionStorage.setItem('kt_runbook_error_history', JSON.stringify(prevErrors));
+    sessionStorage.setItem('zerelio_runbook_gen_error_history', JSON.stringify(prevErrors));
   }, [prevErrors]);
 
   const filteredResources = resources.filter(r =>
@@ -97,7 +97,7 @@ export function Runbooks() {
     if (!selectedResource) return;
     setGenerating(true);
     setGenStatus(`Creating runbook for ${selectedResource.name}...`);
-    localStorage.setItem('kt_runbook_gen_status', `Creating runbook for ${selectedResource.name}...`);
+    localStorage.setItem('zerelio_runbook_gen_status', `Creating runbook for ${selectedResource.name}...`);
     setGenError(null);
     setStreamContent('');
     setStreamProgress(0);
@@ -107,7 +107,7 @@ export function Runbooks() {
 
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (selectedProfile) headers["X-KT-LLM-Profile"] = selectedProfile;
+      if (selectedProfile) headers["X-Zerelio-LLM-Profile"] = selectedProfile;
       const res = await fetch("/api/v1/runbooks", {
         method: "POST",
         headers,
@@ -125,7 +125,7 @@ export function Runbooks() {
         const errMsg = 'Failed to create runbook';
         setGenError(errMsg);
         setPrevErrors(prev => [...prev, errMsg]);
-        sessionStorage.setItem('kt_runbook_gen_error', errMsg);
+        sessionStorage.setItem('zerelio_runbook_gen_error', errMsg);
         setGenerating(false);
         return;
       }
@@ -133,7 +133,7 @@ export function Runbooks() {
         const errMsg = 'LLM generation failed. Check your API key and endpoint in Admin settings.';
         setGenError(errMsg);
         setPrevErrors(prev => [...prev, errMsg]);
-        sessionStorage.setItem('kt_runbook_gen_error', errMsg);
+        sessionStorage.setItem('zerelio_runbook_gen_error', errMsg);
         setGenerating(false);
         return;
       }
@@ -195,10 +195,10 @@ export function Runbooks() {
       const errMsg = 'Connection failed: ' + (e.message || 'unable to reach server');
       setGenError(errMsg);
       setPrevErrors(prev => [...prev, errMsg]);
-      sessionStorage.setItem('kt_runbook_gen_error', errMsg);
+      sessionStorage.setItem('zerelio_runbook_gen_error', errMsg);
     }
     finally {
-      localStorage.removeItem('kt_runbook_gen_status');
+      localStorage.removeItem('zerelio_runbook_gen_status');
       setGenStatus(null);
       setGenerating(false);
       abortRef.current = null;
@@ -213,7 +213,7 @@ export function Runbooks() {
     setGenProgress({ current: 0, total: resources.length });
 
     const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (selectedProfile) headers["X-KT-LLM-Profile"] = selectedProfile;
+    if (selectedProfile) headers["X-Zerelio-LLM-Profile"] = selectedProfile;
 
     let completed = 0;
     let errors = 0;
@@ -422,7 +422,7 @@ export function Runbooks() {
           <div className="flex items-start gap-2">
             <span className="text-[#ff4757] font-medium shrink-0">Error:</span>
             <span className="flex-1 text-[hsl(var(--foreground))]">{genError}</span>
-            <button onClick={() => { setGenError(null); sessionStorage.removeItem('kt_runbook_gen_error'); }} className="text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0">Dismiss</button>
+            <button onClick={() => { setGenError(null); sessionStorage.removeItem('zerelio_runbook_gen_error'); }} className="text-[10px] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] shrink-0">Dismiss</button>
           </div>
         </div>
       )}

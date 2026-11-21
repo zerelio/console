@@ -313,10 +313,8 @@ export function Connectors() {
 
   async function handleRun(id: string) {
     try {
-      await fetch('/api/v1/discovery/run', {
+      await fetch(`/api/v1/discovery/scopes/${id}/run`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope_id: id }),
       });
       setMessage('Discovery started');
       navigate(`/discovery?scope=${id}`);

@@ -128,13 +128,13 @@ export function Admin() {
   const [_ragLoading, _setRagLoading] = useState(false);
   const [ragShowTestResult, setRagShowTestResult] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem('kt_admin_collapsed') || '{}'); } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem('zerelio_admin_collapsed') || '{}'); } catch { return {}; }
   });
 
   function toggleSection(id: string) {
     setCollapsedSections(prev => {
       const next = { ...prev, [id]: !prev[id] };
-      localStorage.setItem('kt_admin_collapsed', JSON.stringify(next));
+      localStorage.setItem('zerelio_admin_collapsed', JSON.stringify(next));
       return next;
     });
   }

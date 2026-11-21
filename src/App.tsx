@@ -79,6 +79,15 @@ function AppContent() {
   const [knowledgeResourceId, setKnowledgeResourceId] = useState<string | undefined>();
   const [knowledgeSuggested, setKnowledgeSuggested] = useState<string[]>([]);
 
+  // Migrate kt_* keys from KnowledgeTree → Zerelio
+  ['onboarded','announcement','theme','recent_pages'].forEach(k => {
+    const old = localStorage.getItem('kt_' + k);
+    if (old !== null && !localStorage.getItem('zerelio_' + k)) {
+      localStorage.setItem('zerelio_' + k, old);
+      localStorage.removeItem('kt_' + k);
+    }
+  });
+
   // Cmd+Shift+K to toggle KnowledgePanel
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -103,7 +112,7 @@ function AppContent() {
   }
 
   // Onboarding check: show wizard if user hasn't completed onboarding
-  const needsOnboarding = !localStorage.getItem('kt_onboarded');
+  const needsOnboarding = !localStorage.getItem('zerelio_onboarded');
   const isOnboardingRoute = location.pathname === '/onboarding';
   if (needsOnboarding && !isOnboardingRoute) {
     return (
@@ -131,10 +140,10 @@ function AppContent() {
           <div id="route-progress" className="h-full bg-gradient-to-r from-[#6c5ce7] to-[#a29bfe] transition-all duration-300 ease-out" style={{ width: '0%', opacity: 0 }} />
         </div>
         {/* Announcement banner placeholder */}
-        {localStorage.getItem('kt_announcement') && (
+        {localStorage.getItem('zerelio_announcement') && (
           <div className="mx-4 mt-4 px-4 py-2 rounded-lg text-xs flex items-center justify-between bg-[#6c5ce7]/10 border border-[#6c5ce7]/20" style={{ color: 'hsl(var(--foreground))' }}>
-            <span>{localStorage.getItem('kt_announcement')}</span>
-            <button onClick={() => localStorage.removeItem('kt_announcement')} className="text-[#5c5c5e] hover:text-[hsl(var(--foreground))]">✕</button>
+            <span>{localStorage.getItem('zerelio_announcement')}</span>
+            <button onClick={() => localStorage.removeItem('zerelio_announcement')} className="text-[#5c5c5e] hover:text-[hsl(var(--foreground))]">✕</button>
           </div>
         )}
         {/* Breadcrumb nav - hidden for dashboard and login */}
@@ -195,5 +204,5 @@ export default function App() {
 }
 
 // Immediately restore theme before first React render to prevent flash
-const _savedTheme = localStorage.getItem('kt_theme');
+const _savedTheme = localStorage.getItem('zerelio_theme');
 document.documentElement.setAttribute('data-theme', _savedTheme === 'light' ? 'light' : 'dark');

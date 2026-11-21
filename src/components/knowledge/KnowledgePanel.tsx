@@ -23,7 +23,7 @@ interface StoredConversation {
   createdAt: string;
 }
 
-const STORAGE_KEY = 'kt_qa_conversations';
+const STORAGE_KEY = 'zerelio_qa_conversations';
 const TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function loadConversations(): StoredConversation[] {
@@ -139,7 +139,7 @@ export function KnowledgePanel({ open, onClose, resourceId, suggestedQuestions }
 
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (selectedProfile) headers['X-KT-LLM-Profile'] = selectedProfile;
+      if (selectedProfile) headers['X-Zerelio-LLM-Profile'] = selectedProfile;
       const res = await fetch('/api/v1/qa/stream', {
         method: 'POST',
         headers,

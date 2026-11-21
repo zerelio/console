@@ -1,4 +1,4 @@
-// Demo fixtures — realistic infrastructure topology for demo.knowledgetree.dev
+// Demo fixtures — realistic infrastructure topology for zerelio.local
 
 // ─── Nodes ──────────────────────────────────────────────────────────────────────
 export const NODES = [
@@ -100,7 +100,7 @@ export const SCOPES = [
   { id: 'scope-aws', name: 'AWS Production', provider: 'aws', plugin_name: 'aws', region: 'us-east-1', enabled: true, schedule: '*/30 * * * *', last_run: '2026-05-17T06:00:00Z', last_run_status: 'completed', resourceCount: 23, status: 'active' },
   { id: 'scope-k8s', name: 'Kubernetes Production', provider: 'kubernetes', plugin_name: 'kubernetes', region: 'us-east-1', enabled: true, schedule: '*/15 * * * *', last_run: '2026-05-17T06:45:00Z', last_run_status: 'completed', resourceCount: 12, status: 'active' },
   { id: 'scope-gcp', name: 'GCP BigQuery', provider: 'gcp', plugin_name: 'gcp', region: 'us-central1', enabled: false, schedule: '0 */6 * * *', last_run: '2026-05-10T00:00:00Z', last_run_status: 'failed', resourceCount: 93, status: 'error' },
-  { id: 'scope-github', name: 'GitHub knowledgetree', provider: 'github', plugin_name: 'github', region: 'global', enabled: false, schedule: '0 0 * * *', last_run: null, last_run_status: null, resourceCount: 48, status: 'disabled' },
+  { id: 'scope-github', name: 'GitHub Zerelio', provider: 'github', plugin_name: 'github', region: 'global', enabled: false, schedule: '0 0 * * *', last_run: null, last_run_status: null, resourceCount: 48, status: 'disabled' },
 ];
 
 export const RUNS = [
@@ -198,9 +198,9 @@ export const CONFIG = { features: { graph_grouped: true, tree_view: true, blast_
 
 // ─── Users ──────────────────────────────────────────────────────────────────────
 export const USERS = [
-  { id: 'u-1', email: 'admin@knowledgetree.example', role: 'admin', created_at: '2025-01-01T00:00:00Z' },
-  { id: 'u-2', email: 'editor@knowledgetree.example', role: 'editor', created_at: '2025-01-15T00:00:00Z' },
-  { id: 'u-3', email: 'viewer@knowledgetree.example', role: 'viewer', created_at: '2025-02-01T00:00:00Z' },
+  { id: 'u-1', email: 'admin@zerelio.local', role: 'admin', created_at: '2025-01-01T00:00:00Z' },
+  { id: 'u-2', email: 'editor@zerelio.local', role: 'editor', created_at: '2025-01-15T00:00:00Z' },
+  { id: 'u-3', email: 'viewer@zerelio.local', role: 'viewer', created_at: '2025-02-01T00:00:00Z' },
 ];
 
 // ─── Terraform Drift ────────────────────────────────────────────────────────────

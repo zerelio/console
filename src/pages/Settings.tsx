@@ -25,7 +25,7 @@ export function Settings() {
 
   // Theme
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('kt_theme') as 'dark' | 'light') || 'dark';
+    return (localStorage.getItem('zerelio_theme') as 'dark' | 'light') || 'dark';
   });
 
   // Notification preferences
@@ -39,16 +39,50 @@ export function Settings() {
 
   useEffect(() => {
     document.title = 'Settings - Zerelio';
-    fetch('/api/v1/auth/me')
-      .then(r => r.json())
-      .then(d => {
-        const data = d.data || d;
-        setProfile({ name: data.name || data.email || 'User', email: data.email || '', role: data.role || '' });
-      })
-      .catch(() => {
-        setProfile({ name: 'Admin User', email: 'admin@example.com', role: 'admin' });
-      })
-      .finally(() => setLoading(false));
+    async function loadProfile() {
+      // Try /auth/me first
+      try {
+        const r = await fetch('/api/v1/auth/me');
+        if (r.ok) {
+          const d = await r.json();
+          const data = d.data || d;
+          setProfile({ name: data.name || data.email || 'User', email: data.email || '', role: data.role || '' });
+          setLoading(false);
+          return;
+        }
+      } catch {}
+
+      // Decode JWT from zerelio_at to get email/sub
+      let jwtEmail = '';
+      try {
+        const token = localStorage.getItem('zerelio_at') || '';
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          jwtEmail = payload.email || payload.sub || '';
+        }
+      } catch {}
+
+      if (jwtEmail) {
+        // Try to get role from /admin/users
+        try {
+          const usersRes = await fetch('/api/v1/admin/users');
+          if (usersRes.ok) {
+            const ud = await usersRes.json();
+            const users: any[] = ud.data ?? ud ?? [];
+            const me = Array.isArray(users) ? users.find((u: any) => u.email === jwtEmail) : null;
+            setProfile({ name: me?.name || jwtEmail, email: jwtEmail, role: me?.role || '' });
+            setLoading(false);
+            return;
+          }
+        } catch {}
+        setProfile({ name: jwtEmail, email: jwtEmail, role: '' });
+      } else {
+        setProfile({ name: 'Profile unavailable', email: 'check API connection', role: '' });
+      }
+      setLoading(false);
+    }
+    loadProfile();
     loadTokens();
     loadPreferences();
   }, []);
@@ -135,7 +169,7 @@ export function Settings() {
 
   function handleThemeChange(t: 'dark' | 'light') {
     setTheme(t);
-    localStorage.setItem('kt_theme', t);
+    localStorage.setItem('zerelio_theme', t);
     document.documentElement.setAttribute('data-theme', t);
   }
 

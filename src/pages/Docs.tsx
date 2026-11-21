@@ -29,8 +29,8 @@ export function Docs() {
   // Dialog state
   const [showDialog, setShowDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [genError, setGenError] = useState<string | null>(sessionStorage.getItem('kt_doc_gen_error'));
-  const [genStatus, setGenStatus] = useState<string | null>(localStorage.getItem('kt_doc_gen_status'));
+  const [genError, setGenError] = useState<string | null>(sessionStorage.getItem('zerelio_doc_gen_error'));
+  const [genStatus, setGenStatus] = useState<string | null>(localStorage.getItem('zerelio_doc_gen_status'));
 
   // Selectors
   const [profiles, setProfiles] = useState<LLMProfile[]>([]);
@@ -114,7 +114,7 @@ export function Docs() {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      localStorage.setItem('kt_doc_gen_draft', JSON.stringify({
+      localStorage.setItem('zerelio_doc_gen_draft', JSON.stringify({
         resourceIds: Array.from(next),
         template: selectedTemplate,
         title: docTitle,
@@ -126,7 +126,7 @@ export function Docs() {
   function handleOpenDialog() {
     setGenError(null);
     // Restore previous state from localStorage
-    const saved = localStorage.getItem('kt_doc_gen_draft');
+    const saved = localStorage.getItem('zerelio_doc_gen_draft');
     if (saved) {
       try {
         const s = JSON.parse(saved);
@@ -148,7 +148,7 @@ export function Docs() {
     if (generating) return; // don't close while generating
     setShowDialog(false);
     setGenError(null);
-    sessionStorage.removeItem('kt_doc_gen_error');
+    sessionStorage.removeItem('zerelio_doc_gen_error');
   }
 
   async function handleGenerate() {
@@ -156,10 +156,10 @@ export function Docs() {
     setGenerating(true);
     setGenError(null);
     setGenStatus('Generating documentation...');
-    localStorage.setItem('kt_doc_gen_status', 'Generating...');
+    localStorage.setItem('zerelio_doc_gen_status', 'Generating...');
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (selectedProfile) headers["X-KT-LLM-Profile"] = selectedProfile;
+      if (selectedProfile) headers["X-Zerelio-LLM-Profile"] = selectedProfile;
       const res = await fetch("/api/v1/docs/generate", {
         method: "POST",
         headers,
@@ -178,7 +178,7 @@ export function Docs() {
       // Refresh docs list to show the new doc(s)
       await loadDocs();
       setShowDialog(false);
-      localStorage.removeItem('kt_doc_gen_status');
+      localStorage.removeItem('zerelio_doc_gen_status');
       setGenStatus(null);
       // Navigate to the new doc - backend returns {doc: {...}}
       const newId = data.doc && data.doc.id ? data.doc.id : (data.data && data.data.id && data.data.id) || (data.data && data.data.doc && data.data.doc.id);
@@ -187,10 +187,10 @@ export function Docs() {
       console.warn("Docs: generate failed", e);
       const errMsg = e.message || 'Generation failed';
       setGenError(errMsg);
-      sessionStorage.setItem('kt_doc_gen_error', errMsg);
+      sessionStorage.setItem('zerelio_doc_gen_error', errMsg);
     } finally {
       setGenerating(false);
-      localStorage.removeItem('kt_doc_gen_status');
+      localStorage.removeItem('zerelio_doc_gen_status');
       setGenStatus(null);
     }
   }

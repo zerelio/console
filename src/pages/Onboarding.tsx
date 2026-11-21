@@ -146,12 +146,12 @@ export function Onboarding() {
   }
 
   function completeOnboarding() {
-    localStorage.setItem('kt_onboarded', 'true');
+    localStorage.setItem('zerelio_onboarded', 'true');
     navigate('/', { replace: true });
   }
 
   function handleSkip() {
-    localStorage.setItem('kt_onboarded', 'true');
+    localStorage.setItem('zerelio_onboarded', 'true');
     navigate('/', { replace: true });
   }
 

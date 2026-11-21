@@ -11,7 +11,7 @@ export function Discovery() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<string | null>(null);
   const [status, setStatus] = useState<any>(null);
-  const [hiddenRuns, setHiddenRuns] = useState<Set<string>>(new Set(JSON.parse(localStorage.getItem('kt_hidden_runs') || '[]')));
+  const [hiddenRuns, setHiddenRuns] = useState<Set<string>>(new Set(JSON.parse(localStorage.getItem('zerelio_hidden_runs') || '[]')));
   const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
@@ -19,11 +19,10 @@ export function Discovery() {
     Promise.all([
       fetch('/api/v1/discovery/scopes').then(r => r.json()).catch(() => { console.warn("Discovery: scopes unavailable"); return { data: [] }; }),
       fetch('/api/v1/discovery/runs?limit=50').then(r => r.json()).catch(() => { console.warn("Discovery: runs unavailable"); return { data: [] }; }),
-      fetch('/api/v1/discovery/status').then(r => r.json()).catch(() => { console.warn("Discovery: status unavailable"); return {}; }),
-    ]).then(([s, r, st]) => {
+    ]).then(([s, r]) => {
       setScopes(s && s.data ? s.data : Array.isArray(s) ? s : []);
-      setRuns(r && r.data ? r.data : Array.isArray(r) ? r : []);
-      setStatus(st && st.data ? st.data : st || {});
+      setRuns(r && r.data ? r.data : Array.isArray(r) ? r : (r && r.runs ? r.runs : []));
+      setStatus({ total_runs: 0, total_resources: 0 });
     }).finally(() => setLoading(false));
   }, []);
 
@@ -31,7 +30,7 @@ export function Discovery() {
     const next = new Set(hiddenRuns);
     next.add(runId);
     setHiddenRuns(next);
-    localStorage.setItem('kt_hidden_runs', JSON.stringify([...next]));
+    localStorage.setItem('zerelio_hidden_runs', JSON.stringify([...next]));
   }
 
   async function deleteRun(runId: string) {
@@ -49,10 +48,8 @@ export function Discovery() {
   async function runDiscovery(scopeId: string) {
     setRunning(scopeId);
     try {
-      const res = await fetch('/api/v1/discovery/run', {
+      const res = await fetch(`/api/v1/discovery/scopes/${scopeId}/run`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope_id: scopeId }),
       });
       if (!res.ok) {
         setRunning(null);

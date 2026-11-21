@@ -23,7 +23,7 @@ const navItems: NavItem[] = [
   { path: '/admin', icon: ShieldIcon, label: 'Admin', roles: ['admin'] },
 ];
 
-const THEME_KEY = 'kt_theme';
+const THEME_KEY = 'zerelio_theme';
 
 export function Sidebar({ onToggleKnowledge }: { onToggleKnowledge?: () => void }) {
   const location = useLocation();
@@ -44,13 +44,13 @@ export function Sidebar({ onToggleKnowledge }: { onToggleKnowledge?: () => void 
   useEffect(() => {
     const path = location.pathname;
     if (path === '/') return;
-    const recent = JSON.parse(localStorage.getItem('kt_recent_pages') || '[]');
+    const recent = JSON.parse(localStorage.getItem('zerelio_recent_pages') || '[]');
     const filtered = recent.filter((p: string) => p !== path);
     filtered.unshift(path);
-    localStorage.setItem('kt_recent_pages', JSON.stringify(filtered.slice(0, 3)));
+    localStorage.setItem('zerelio_recent_pages', JSON.stringify(filtered.slice(0, 3)));
   }, [location.pathname]);
 
-  const recentPages = JSON.parse(localStorage.getItem('kt_recent_pages') || '[]');
+  const recentPages = JSON.parse(localStorage.getItem('zerelio_recent_pages') || '[]');
 
   useEffect(() => {
     fetch('/api/v1/discovery/scopes')
