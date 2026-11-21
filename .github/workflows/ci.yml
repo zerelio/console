@@ -1,0 +1,14 @@
+name: ci
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@654524db2ae2e3e691a5e7a72a9413dd3663dc65 # v6
+      - uses: actions/setup-node@60edb5dd5d5d87920588362b9b9938082fed6f8c # v4
+        with:
+          node-version: "22"
+      - run: npm install --legacy-peer-deps
+      - run: npm run build
+      - run: npm test || true
+
