@@ -93,15 +93,17 @@ export function Dashboard() {
     let mounted = true;
     async function load() {
       try {
+        // /knowledge/gaps is Zerelio-future; fall back to search count for totals
+        const safeJson = (r: Response) => r.ok ? r.json() : Promise.resolve(null);
         const [gapsRes, searchRes] = await Promise.all([
-          fetch('/api/v1/knowledge/gaps').then(r => r.json()),
-          fetch('/api/v1/search?limit=1').then(r => r.json()),
+          fetch('/api/v1/knowledge/gaps').then(safeJson).catch(() => null),
+          fetch('/api/v1/search?limit=1').then(safeJson).catch(() => null),
         ]);
         if (!mounted) return;
-        const gaps = gapsRes.data || gapsRes;
-        const search = searchRes.data || searchRes;
+        const gaps = gapsRes?.data || gapsRes || {};
+        const search = searchRes?.data || searchRes || {};
         setStats({
-          total: gaps.total || search.total || (search.results?.length || 0),
+          total: gaps.total || search.total || search.results?.length || 0,
           covered: gaps.covered || 0,
           gaps: (gaps.total || 0) - (gaps.covered || 0),
         });
@@ -131,12 +133,12 @@ export function Dashboard() {
     let mounted = true;
     fetch('/api/v1/discovery/scopes')
       .then(r => r.json())
-      .then(d => { if (mounted) setScopes(d?.data ?? (Array.isArray(d) ? d : [])); })
+      .then(d => { if (mounted) setScopes(d?.scopes ?? d?.data ?? (Array.isArray(d) ? d : [])); })
       .catch(() => {})
       .finally(() => { if (mounted) setScopesLoading(false); });
     fetch('/api/v1/discovery/runs?limit=1')
       .then(r => r.json())
-      .then(d => { if (mounted) { const runs = d?.data ?? (Array.isArray(d) ? d : []); if (runs.length > 0) setLastRun(runs[0]); } })
+      .then(d => { if (mounted) { const runs = d?.runs ?? d?.data ?? (Array.isArray(d) ? d : []); if (runs.length > 0) setLastRun(runs[0]); } })
       .catch(() => {})
       .finally(() => { if (mounted) setLastRunLoading(false); });
     return () => { mounted = false; };
@@ -146,7 +148,7 @@ export function Dashboard() {
   useEffect(() => {
     let mounted = true;
     fetch('/api/v1/knowledge/coverage-history')
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : null)
       .then(d => { if (mounted) setCoverageHistory(d?.data ?? (Array.isArray(d) ? d : [])); })
       .catch(() => {})
       .finally(() => { if (mounted) setCoverageHistoryLoading(false); });
