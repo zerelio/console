@@ -212,10 +212,10 @@ export default function ScopesPage() {
                       className="rounded-lg p-3 font-mono text-xs space-y-1"
                       style={{ background: '#111', color: '#a1a1aa' }}
                     >
-                      {Object.entries(scope.config).length === 0 ? (
+                      {Object.entries(scope.config ?? {}).length === 0 ? (
                         <span style={{ color: '#3f3f46' }}>No config</span>
                       ) : (
-                        Object.entries(scope.config).map(([k, v]) => (
+                        Object.entries(scope.config ?? {}).map(([k, v]) => (
                           <div key={k} className="flex justify-between gap-4">
                             <span style={{ color: '#6366f1' }}>{k}</span>
                             <span style={{ color: '#71717a' }}>{String(v)}</span>
