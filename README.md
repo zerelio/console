@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Zerelio Console
 
-## Getting Started
+The Zerelio Console is the management UI for the Zerelio platform. Built with Next.js 16 and Tailwind CSS 4, it provides a real-time view of your discovery data — including plugins, scopes, runs, resources, and compliance findings — giving operators full visibility and control over their Zerelio deployment.
 
-First, run the development server:
+![screenshot]
+
+## Stack
+
+- **Next.js 16** — React framework with App Router
+- **Tailwind CSS 4** — utility-first styling
+- **TypeScript**
+
+## Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXT_PUBLIC_ZERELIO_API_URL` | `http://localhost:8080` | Base URL of the Zerelio backend API |
+
+Copy `.env.local.example` to `.env.local` and adjust as needed.
+
+## Local Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app will be available at [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Authentication
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Log in with an email and password, or via SSO if OIDC is configured on the backend.
 
-## Learn More
+## Backend
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The Console connects to [zerelio/knowledge](https://github.com/zerelio/knowledge) for all data.
