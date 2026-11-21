@@ -1,59 +1,88 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-import { BoxIcon, DocSmallIcon, AlertIcon } from '../components/ui/Icons';
 import { timeAgo } from '../lib/format';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-interface CoverageStats {
-  total: number;
-  covered: number;
-  gaps: number;
-}
-
-interface ChangeItem {
-  id: string;
-  type: string;
-  resourceType: string;
-  resourceName: string;
-  description: string;
-  timestamp: string;
-  author: string;
-}
-
-interface ScopeItem {
+interface Scope {
   id: string;
   name: string;
   plugin_name: string;
   status: string;
-  last_run_status: string;
+  resource_count: number;
+  last_run?: string;
+  schedule?: string;
+}
+
+interface DiscoveryRun {
+  id: string;
+  scope_id: string;
+  status: string;
+  started_at: string;
+  completed_at?: string;
+  resources_found: number;
+  relationships_found: number;
+  errors?: string[];
+}
+
+interface Finding {
+  id: string;
+  severity: string;
+  status: string;
+  rule_id: string;
+  message: string;
+  resource_id?: string;
+}
+
+interface HealthStatus {
+  status: string;
+  version: string;
+  time: string;
+  components: Record<string, { status: string; message?: string }>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const SEVERITY_BADGES: Record<string, string> = {
-  deployed:  'text-[#2ed573]',
-  modified:  'text-[#0097e6]',
-  created:   'text-[#ffa502]',
-  deleted:   'text-[#e84393]',
+const PLUGIN_COLORS: Record<string, string> = {
+  aws:        '#FF9900',
+  azure:      '#0078D4',
+  gcp:        '#4285F4',
+  github:     '#6e40c9',
+  kubernetes: '#326CE5',
+  grafana:    '#F46800',
+  pagerduty:  '#06AC38',
+  slack:      '#4A154B',
+  dns:        '#00B388',
 };
 
-const SEVERITY_ICONS: Record<string, string> = {
-  deployed: '↑',
-  modified: '✎',
-  created: '+',
-  deleted: '×',
-};
-
-function shortResourceType(t: string): string {
-  const s = t.split('.').pop() || t;
-  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+function pluginColor(name: string) {
+  return PLUGIN_COLORS[name?.toLowerCase()] ?? '#6c5ce7';
 }
 
-function providerColor(p: string): string {
-  const colors: Record<string, string> = { aws: '#ff9900', azure: '#0078d4', gcp: '#4285f4', kubernetes: '#326ce5', github: '#6e5494', grafana: '#f46800', prometheus: '#e6522c', cloudflare: '#f38020', datadog: '#632ca6', default: '#6c5ce7' };
-  return colors[p.toLowerCase()] || colors.default;
+function statusColor(s: string) {
+  if (!s) return '#5c5c5e';
+  const l = s.toLowerCase();
+  if (l === 'success' || l === 'completed' || l === 'active') return '#2ed573';
+  if (l === 'running'  || l === 'pending')                   return '#ffa502';
+  if (l === 'failed'   || l === 'error')                     return '#ff4757';
+  return '#8b8b8e';
+}
+
+function StatusDot({ status }: { status: string }) {
+  return (
+    <span style={{
+      display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+      background: statusColor(status), marginRight: 5, flexShrink: 0,
+    }} />
+  );
+}
+
+function durationLabel(run: DiscoveryRun): string {
+  if (!run.completed_at) return '';
+  const ms = new Date(run.completed_at).getTime() - new Date(run.started_at).getTime();
+  if (ms < 1000)  return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.round(ms / 60000)}m`;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -61,408 +90,394 @@ function providerColor(p: string): string {
 export function Dashboard() {
   const navigate = useNavigate();
 
-  // Coverage state
-  const [stats, setStats] = useState<CoverageStats>({ total: 0, covered: 0, gaps: 0 });
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [statsError, setStatsError] = useState(false);
+  const [scopes,         setScopes]         = useState<Scope[]>([]);
+  const [runs,           setRuns]           = useState<DiscoveryRun[]>([]);
+  const [findings,       setFindings]       = useState<Finding[]>([]);
+  const [health,         setHealth]         = useState<HealthStatus | null>(null);
+  const [totalResources, setTotalResources] = useState(0);
+  const [loading,        setLoading]        = useState(true);
+  const [lastFetch,      setLastFetch]      = useState<Date | null>(null);
 
-  // Changes state
-  const [changes, setChanges] = useState<ChangeItem[]>([]);
-  const [changesLoading, setChangesLoading] = useState(true);
-
-  // Connectors state
-  const [scopes, setScopes] = useState<ScopeItem[]>([]);
-  const [lastRun, setLastRun] = useState<any>(null);
-  const [lastRunLoading, setLastRunLoading] = useState(true);
-  const [scopesLoading, setScopesLoading] = useState(true);
-
-  // Provider coverage
-  const [providerCoverage, setProviderCoverage] = useState<Record<string, number>>({});
-  const [providerLoading, setProviderLoading] = useState(true);
-  const [showAllProviders, setShowAllProviders] = useState(false);
-
-  // Coverage history sparkline
-  const [coverageHistory, setCoverageHistory] = useState<{date: string; resources: number}[]>([]);
-  const [coverageHistoryLoading, setCoverageHistoryLoading] = useState(true);
-
-  useEffect(() => {
-    document.title = 'Dashboard - Zerelio';
+  const load = useCallback(() => {
+    setLoading(true);
+    const safeJson = (r: Response) => r.ok ? r.json() : Promise.resolve(null);
+    Promise.all([
+      fetch('/api/v1/discovery/scopes').then(safeJson).catch(() => null),
+      fetch('/api/v1/discovery/runs?limit=10').then(safeJson).catch(() => null),
+      fetch('/api/v1/compliance/findings').then(safeJson).catch(() => null),
+      fetch('/api/v1/resources?limit=1').then(safeJson).catch(() => null),
+      fetch('/api/v1/health').then(safeJson).catch(() => null),
+    ]).then(([s, r, f, res, h]) => {
+      setScopes(s?.scopes ?? []);
+      setRuns(r?.runs ?? []);
+      setFindings(Array.isArray(f) ? f : (f?.findings ?? []));
+      setTotalResources(res?.total ?? 0);
+      setHealth(h);
+      setLastFetch(new Date());
+    }).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    async function load() {
-      try {
-        // /knowledge/gaps is Zerelio-future; fall back to search count for totals
-        const safeJson = (r: Response) => r.ok ? r.json() : Promise.resolve(null);
-        const [gapsRes, searchRes] = await Promise.all([
-          fetch('/api/v1/knowledge/gaps').then(safeJson).catch(() => null),
-          fetch('/api/v1/search?limit=1').then(safeJson).catch(() => null),
-        ]);
-        if (!mounted) return;
-        const gaps = gapsRes?.data || gapsRes || {};
-        const search = searchRes?.data || searchRes || {};
-        setStats({
-          total: gaps.total || search.total || search.results?.length || 0,
-          covered: gaps.covered || 0,
-          gaps: (gaps.total || 0) - (gaps.covered || 0),
-        });
-        setStatsError(false);
-      } catch {
-        if (!mounted) return;
-        setStatsError(true);
-      } finally {
-        if (mounted) setStatsLoading(false);
-      }
-    }
+    document.title = 'Dashboard — Zerelio';
     load();
-    return () => { mounted = false; };
-  }, []);
+    const interval = setInterval(() => {
+      const hasActiveRun = runs.some(r => r.status === 'running' || r.status === 'pending');
+      if (hasActiveRun) load();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    let mounted = true;
-    fetch('/api/v1/changes?limit=5')
-      .then(r => r.json())
-      .then(d => { if (mounted) setChanges(d?.data ?? d?.changes ?? (Array.isArray(d) ? d : [])); })
-      .catch(() => {})
-      .finally(() => { if (mounted) setChangesLoading(false); });
-    return () => { mounted = false; };
-  }, []);
+  // ── Derived ─────────────────────────────────────────────────────────────────
+  const openFindings  = findings.filter(f => f.status === 'open' || !f.status);
+  const critFindings  = openFindings.filter(f => f.severity === 'critical');
+  const lastRun       = runs[0] ?? null;
+  const totalResCount = scopes.reduce((n, s) => n + (s.resource_count || 0), 0) || totalResources;
+  const resourcesByPlugin = scopes.reduce((acc, s) => {
+    if (s.resource_count > 0) acc[s.plugin_name] = (acc[s.plugin_name] || 0) + s.resource_count;
+    return acc;
+  }, {} as Record<string, number>);
 
-  useEffect(() => {
-    let mounted = true;
-    fetch('/api/v1/discovery/scopes')
-      .then(r => r.json())
-      .then(d => { if (mounted) setScopes(d?.scopes ?? d?.data ?? (Array.isArray(d) ? d : [])); })
-      .catch(() => {})
-      .finally(() => { if (mounted) setScopesLoading(false); });
-    fetch('/api/v1/discovery/runs?limit=1')
-      .then(r => r.json())
-      .then(d => { if (mounted) { const runs = d?.runs ?? d?.data ?? (Array.isArray(d) ? d : []); if (runs.length > 0) setLastRun(runs[0]); } })
-      .catch(() => {})
-      .finally(() => { if (mounted) setLastRunLoading(false); });
-    return () => { mounted = false; };
-  }, []);
+  const card = {
+    background: 'hsl(var(--card))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: 12,
+  } as const;
 
-  // Coverage history sparkline
-  useEffect(() => {
-    let mounted = true;
-    fetch('/api/v1/knowledge/coverage-history')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (mounted) setCoverageHistory(d?.data ?? (Array.isArray(d) ? d : [])); })
-      .catch(() => {})
-      .finally(() => { if (mounted) setCoverageHistoryLoading(false); });
-    return () => { mounted = false; };
-  }, []);
-
-  // Provider coverage
-  useEffect(() => {
-    let mounted = true;
-    async function load() {
-      try {
-        const res = await fetch('/api/v1/search?limit=10000');
-        const d = await res.json();
-        if (!mounted) return;
-        const data = d?.data ?? d ?? {};
-        const results = Array.isArray(data.results) ? data.results : [];
-        const providers: Record<string, number> = {};
-        for (const r of results) {
-          const p = r.provider || r.Provider || 'unknown';
-          providers[p] = (providers[p] || 0) + 1;
-        }
-        setProviderCoverage(providers);
-      } catch {}
-      finally { if (mounted) setProviderLoading(false); }
-    }
-    load();
-    return () => { mounted = false; };
-  }, []);
-
-  const pct = stats.total > 0 ? Math.round((stats.covered / stats.total) * 100) : 0;
-  const healthyScopes = scopes.filter(s => (s.status || '') !== 'error' && (s.last_run_status || '') !== 'FAILED');
-  const errorScopes = scopes.filter(s => (s.last_run_status || '') === 'FAILED');
-  const hasData = stats.total > 0;
-
-  // ── Loading state ──
-  if (statsLoading) {
+  // ── Loading skeleton ─────────────────────────────────────────────────────────
+  if (loading && scopes.length === 0) {
     return (
-      <div className="p-8 space-y-6 animate-fade">
-        {[1,2,3].map(i => <div key={i} className="h-32 rounded-xl bg-[hsl(var(--card))] animate-pulse" />)}
-      </div>
-    );
-  }
-
-  // ── Empty / Error state ──
-  if (!hasData && !statsLoading) {
-    return (
-      <div className="p-8 flex flex-col items-center justify-center h-full animate-fade animate-slide-up">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#6c5ce7]/20 to-[#a29bfe]/10 flex items-center justify-center mb-6">
-          <svg className="w-8 h-8 text-[#6c5ce7]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+      <div className="p-6 space-y-4 animate-pulse">
+        <div className="h-8 w-48 rounded-lg bg-white/5" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <div key={i} className="h-24 rounded-xl" style={{ background: 'hsl(var(--card))' }} />)}
         </div>
-        {statsError ? (
-          <>
-            <h1 className="text-2xl font-semibold mb-2">Failed to load dashboard</h1>
-            <p className="text-[#8b8b8e] mb-8 text-center max-w-md">Could not reach the server. Check that the API is running.</p>
-            <button onClick={() => { setStatsLoading(true); setStatsError(false); Promise.all([fetch('/api/v1/knowledge/gaps').then(r=>r.json()), fetch('/api/v1/search?limit=1').then(r=>r.json())]).then(([gapsRes, searchRes]) => { const gaps = gapsRes.data || gapsRes; const search = searchRes.data || searchRes; setStats({ total: gaps.total || search.total || 0, covered: gaps.covered || 0, gaps: (gaps.total || 0) - (gaps.covered || 0) }); setStatsError(false); }).catch(() => setStatsError(true)).finally(() => setStatsLoading(false)); }}
-              className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-sm rounded-xl border border-[hsl(var(--border))] transition-all">Retry</button>
-          </>
-        ) : (
-          <>
-            <h1 className="text-2xl font-semibold mb-2">No infrastructure discovered yet</h1>
-            <p className="text-[#8b8b8e] mb-8 text-center max-w-md">Connect your first cloud provider to start mapping your infrastructure and auto-generating documentation.</p>
-            <div className="rounded-xl border border-[hsl(var(--border))] p-6 w-full max-w-md space-y-4" style={{ background: 'hsl(var(--card))' }}>
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-[#5c5c5e]">Getting Started</h3>
-              <div className="space-y-3">
-                <button onClick={() => navigate('/connectors')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm text-left transition-all hover:bg-[hsl(var(--border))] group">
-                  <span className="w-6 h-6 rounded-full border-2 border-[#6c5ce7]/40 flex items-center justify-center text-xs font-semibold text-[#6c5ce7]">1</span>
-                  <div className="flex-1">
-                    <span className="font-medium">Connect a Cloud Provider</span>
-                    <p className="text-[#8b8b8e] text-xs mt-0.5">AWS, Azure, GCP, Kubernetes, or 20+ others</p>
-                  </div>
-                  <span className="text-xs text-[#6c5ce7] opacity-0 group-hover:opacity-100 transition-opacity">Connect &rarr;</span>
-                </button>
-                <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm opacity-50">
-                  <span className="w-6 h-6 rounded-full border-2 border-[#5c5c5e]/40 flex items-center justify-center text-xs font-semibold text-[#5c5c5e]">2</span>
-                  <div className="flex-1">
-                    <span className="font-medium">Run Discovery</span>
-                    <p className="text-[#5c5c5e] text-xs mt-0.5">Scans and maps your infrastructure</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm opacity-50">
-                  <span className="w-6 h-6 rounded-full border-2 border-[#5c5c5e]/40 flex items-center justify-center text-xs font-semibold text-[#5c5c5e]">3</span>
-                  <div className="flex-1">
-                    <span className="font-medium">Generate Documentation</span>
-                    <p className="text-[#5c5c5e] text-xs mt-0.5">Auto-create docs and runbooks with AI</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 h-56 rounded-xl" style={{ background: 'hsl(var(--card))' }} />
+          <div className="h-56 rounded-xl" style={{ background: 'hsl(var(--card))' }} />
+        </div>
       </div>
     );
   }
 
-  // ── Main render ──
-  return (
-    <div className="p-8 space-y-8 animate-fade animate-slide-up">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold">Overview</h1>
-        <p className="text-[#8b8b8e] mt-1">Your infrastructure knowledge base</p>
-      </div>
+  // ── Empty state (no scopes configured yet) ────────────────────────────────
+  if (!loading && scopes.length === 0) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto space-y-6 animate-fade">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-[#8b8b8e] mt-1 text-sm">Infrastructure discovery overview</p>
+        </div>
 
-      {/* Last run banner */}
-      {!lastRunLoading && lastRun && (
-        <div className="rounded-xl p-4 flex items-center justify-between" style={{background: lastRun.status === 'COMPLETED' ? 'rgba(46,213,115,0.1)' : lastRun.status === 'RUNNING' ? 'rgba(108,92,231,0.1)' : 'rgba(255,71,87,0.1)', border: '1px solid ' + (lastRun.status === 'COMPLETED' ? 'rgba(46,213,115,0.3)' : lastRun.status === 'RUNNING' ? 'rgba(108,92,231,0.3)' : 'rgba(255,71,87,0.3)')}}>
-          <div className="flex items-center gap-3">
-            <span className={`w-2.5 h-2.5 rounded-full ${lastRun.status === 'RUNNING' ? 'animate-pulse bg-[#6c5ce7]' : lastRun.status === 'COMPLETED' ? 'bg-[#2ed573]' : 'bg-[#ff4757]'}`} />
-            <div>
-              <p className="text-sm font-medium" style={{color: 'hsl(var(--foreground))'}}>Last Discovery Run: {lastRun.status}</p>
-              <p className="text-xs" style={{color: 'hsl(var(--muted-foreground))'}}>{lastRun.resources_found || 0} resources found · {lastRun.started_at ? timeAgo(lastRun.started_at) : ''}</p>
-            </div>
+        <div className="rounded-2xl p-8 text-center space-y-6" style={card}>
+          <div className="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg,rgba(108,92,231,.2),rgba(162,155,254,.08))' }}>
+            <svg className="w-7 h-7 text-[#6c5ce7]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+            </svg>
           </div>
-          <button onClick={() => navigate('/discovery')} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))'}}>View Runs</button>
-        </div>
-      )}
-
-      {/* Coverage card */}
-      <div className="rounded-2xl bg-gradient-to-br from-[#6c5ce7]/5 to-[#a29bfe]/5 border border-[hsl(var(--border))] p-8">
-        <div className="flex items-start justify-between mb-6">
           <div>
-            <h2 className="text-lg font-semibold">Knowledge Coverage</h2>
-            <p className="text-sm text-[#8b8b8e] mt-1">{stats.covered}/{stats.total} resources documented</p>
+            <h2 className="text-xl font-semibold mb-2">No infrastructure discovered yet</h2>
+            <p className="text-[#8b8b8e] text-sm max-w-sm mx-auto">
+              Create a scope to tell Zerelio what to discover, then trigger a run.
+              Resources, relationships, and compliance findings will appear here.
+            </p>
           </div>
-          <div className="text-right">
-            <span className="text-4xl font-bold text-white">{pct}%</span>
-          </div>
-        </div>
-        {/* Progress bar */}
-        <div className="h-2 bg-[hsl(var(--border))] rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-[#6c5ce7] to-[#a29bfe] rounded-full transition-all duration-1000" style={{ width: `${pct}%` }} />
-        </div>
-        <div className="flex items-center gap-6 mt-6">
-          {stats.total > stats.covered && (
-            <button onClick={() => navigate("/docs")} className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-sm text-[hsl(var(--foreground))] rounded-xl border border-[hsl(var(--border))] transition-all duration-200 font-medium">
-              Generate Missing Documentation ({stats.gaps} remaining)
-            </button>
-          )}
-          {/* Coverage sparkline */}
-          {!coverageHistoryLoading && coverageHistory.length > 1 && (
-            <div className="flex items-center gap-3 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-              </svg>
-              <div className="flex items-end gap-0.5 h-8">
-                {coverageHistory.slice(-14).map((p, i) => {
-                  const max = Math.max(...coverageHistory.slice(-14).map(x => x.resources), 1);
-                  const h = Math.max((p.resources / max) * 28, 2);
-                  return <div key={i} className="w-2 rounded-t" style={{ height: `${h}px`, background: 'hsl(var(--primary))', opacity: 0.4 + (i / 14) * 0.6 }} title={`${p.date}: ${p.resources} resources`} />;
-                })}
-              </div>
-              <span>{coverageHistory[coverageHistory.length-1].resources} resources</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Quick action buttons */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <QuickAction onClick={() => navigate('/discovery')} label="Run Discovery" icon={<ActivityIcon />} />
-        <QuickAction onClick={() => navigate('/docs')} label="Generate Docs" icon={<DocSmallIcon />} />
-        <QuickAction onClick={() => navigate('/graph')} label="View Graph" icon={<GraphIcon />} />
-        <QuickAction onClick={() => navigate('/connectors')} label="Manage Connectors" icon={<PlugIcon />} />
-      </div>
-
-      {/* Stats grid + Recent Changes */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Stat cards */}
-        <div className="space-y-3">
-          <StatCard title="Resources" value={stats.total} subtitle="discovered" icon={<BoxIcon />} />
-          <StatCard title="Documented" value={stats.covered} subtitle="resources with docs" icon={<DocSmallIcon />} />
-          <StatCard title="Gaps" value={stats.gaps} subtitle="needs documentation" icon={<AlertIcon />} />
-
-          {/* Connector health summary */}
-          {!scopesLoading && scopes.length > 0 && (
-            <div className="rounded-xl bg-[hsl(var(--card))] border border-[hsl(var(--border))] p-4 space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-[#5c5c5e]">Connectors</h3>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[hsl(var(--muted-foreground))]">Active</span>
-                <span className="font-medium">{healthyScopes.length}/{scopes.length}</span>
-              </div>
-              {errorScopes.length > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-[hsl(0,85%,60%)]">Errors</span>
-                  <span className="font-medium text-[hsl(0,85%,60%)]">{errorScopes.length}</span>
+          <div className="text-left space-y-2 max-w-sm mx-auto">
+            <p className="text-xs uppercase tracking-wider text-[#5c5c5e] font-semibold mb-3">Get started</p>
+            {[
+              { n: 1, label: 'Create a scope',    sub: 'Pick a plugin and configure credentials', path: '/discovery' },
+              { n: 2, label: 'Run discovery',     sub: 'Zerelio scans and indexes your infrastructure', path: '/discovery' },
+              { n: 3, label: 'Browse resources',  sub: 'Search, graph, and compliance analysis',  path: '/resources' },
+            ].map(step => (
+              <div key={step.n}
+                className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm cursor-pointer hover:bg-white/5 transition-colors"
+                style={{ background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))' }}
+                onClick={() => navigate(step.path)}>
+                <span className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold"
+                  style={{ background: 'rgba(108,92,231,.15)', color: '#6c5ce7', border: '1.5px solid rgba(108,92,231,.3)' }}>
+                  {step.n}
+                </span>
+                <div className="flex-1">
+                  <div className="font-medium">{step.label}</div>
+                  <div className="text-[#8b8b8e] text-xs">{step.sub}</div>
                 </div>
-              )}
-              <button onClick={() => navigate('/connectors')} className="text-xs text-[#6c5ce7] hover:underline pt-1">View all connectors</button>
-            </div>
-          )}
+                <span className="text-[#6c5ce7] text-xs opacity-60">→</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Recent changes */}
-        <div className="lg:col-span-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[#5c5c5e] mb-3">Recent Changes</h2>
-          {changesLoading ? (
-            <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-14 rounded-xl bg-[hsl(var(--card))] animate-pulse" />)}</div>
-          ) : changes.length === 0 ? (
-            <div className="rounded-xl bg-[hsl(var(--card))] border border-[hsl(var(--border))] p-8 text-center">
-              <p className="text-sm text-[#8b8b8e]">No recent changes</p>
-              <p className="text-xs text-[#5c5c5e] mt-1">Changes will appear here after discovery runs detect infrastructure drift.</p>
+        {health && <SystemHealth health={health} />}
+      </div>
+    );
+  }
+
+  // ── Main dashboard ───────────────────────────────────────────────────────
+  return (
+    <div className="p-6 space-y-5 animate-fade">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-[#8b8b8e] text-sm mt-0.5">
+            {lastFetch ? `Updated ${timeAgo(lastFetch.toISOString())}` : 'Loading…'}
+          </p>
+        </div>
+        <button onClick={load} disabled={loading}
+          className="text-sm px-3 py-1.5 rounded-lg transition-all disabled:opacity-40"
+          style={{ background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))' }}>
+          {loading ? 'Refreshing…' : '↻ Refresh'}
+        </button>
+      </div>
+
+      {/* Stat tiles */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatTile label="Resources"  icon="📦"
+          value={totalResCount}
+          sub={`across ${scopes.length} scope${scopes.length !== 1 ? 's' : ''}`}
+          onClick={() => navigate('/resources')} />
+        <StatTile label="Scopes"     icon="🔭"
+          value={scopes.length}
+          sub={lastRun ? `last run ${timeAgo(lastRun.started_at)}` : 'no runs yet'}
+          onClick={() => navigate('/discovery')} />
+        <StatTile label="Findings"   icon="⚠️"
+          value={openFindings.length}
+          sub={critFindings.length > 0 ? `${critFindings.length} critical` : 'no critical issues'}
+          accent={critFindings.length > 0 ? '#ff4757' : undefined}
+          onClick={() => navigate('/compliance')} />
+        <StatTile label="Last Run"   icon={lastRun?.status === 'running' ? '⚡' : '🕐'}
+          value={lastRun ? (lastRun.status === 'running' ? 'Running…' : timeAgo(lastRun.started_at)) : '—'}
+          sub={lastRun ? `${lastRun.resources_found} resources found` : 'go to Discovery to run'}
+          accent={lastRun?.status === 'failed' ? '#ff4757' : undefined}
+          valueSmall={!lastRun || lastRun.status !== 'running'}
+          onClick={() => navigate('/changes')} />
+      </div>
+
+      {/* Middle row: runs + right sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Recent runs */}
+        <div className="lg:col-span-2 rounded-xl p-5" style={card}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-[#5c5c5e]">Recent Discovery Runs</h2>
+            <button className="text-xs text-[#6c5ce7] hover:underline" onClick={() => navigate('/changes')}>View all →</button>
+          </div>
+          {runs.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-[#5c5c5e] text-sm">No runs yet.</p>
+              <button className="mt-2 text-xs text-[#6c5ce7] hover:underline"
+                onClick={() => navigate('/discovery')}>
+                Trigger a run from Discovery →
+              </button>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-              {changes.map(c => {
-                const icon = SEVERITY_ICONS[c.type] || '?';
-                const color = SEVERITY_BADGES[c.type] || 'text-[#8b8b8e]';
+            <div className="space-y-2">
+              {runs.slice(0, 6).map(run => {
+                const scope = scopes.find(s => s.id === run.scope_id);
+                const dur   = durationLabel(run);
                 return (
-                  <div key={c.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[hsl(var(--card))] border border-[hsl(var(--border))] hover:border-[hsl(var(--muted-foreground))/30] transition-all">
-                    <span className={`w-6 h-6 rounded-full bg-[hsl(var(--background))] flex items-center justify-center text-xs font-bold shrink-0 ${color}`}>{icon}</span>
+                  <div key={run.id}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm"
+                    style={{ background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))' }}>
+                    <span className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
+                      style={{
+                        background: `${pluginColor(scope?.plugin_name ?? '')}22`,
+                        color: pluginColor(scope?.plugin_name ?? ''),
+                      }}>
+                      {(scope?.plugin_name ?? '?')[0].toUpperCase()}
+                    </span>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium truncate">{c.resourceName}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] shrink-0">{shortResourceType(c.resourceType)}</span>
-                      </div>
-                      <p className="text-xs text-[#8b8b8e] truncate mt-0.5">{c.description}</p>
+                      <span className="font-medium truncate">{scope?.name ?? run.scope_id}</span>
+                      {run.errors?.length ? (
+                        <span className="ml-2 text-xs text-[#ff4757]">{run.errors[0]}</span>
+                      ) : null}
                     </div>
-                    <span className="text-xs text-[#5c5c5e] shrink-0">{timeAgo(c.timestamp)}</span>
+                    <div className="flex items-center gap-3 text-xs flex-shrink-0">
+                      {run.resources_found > 0 && (
+                        <span className="text-[#8b8b8e]">{run.resources_found} res</span>
+                      )}
+                      {dur && <span className="text-[#5c5c5e]">{dur}</span>}
+                      <span className="text-[#5c5c5e]">{timeAgo(run.started_at)}</span>
+                      <span className="flex items-center">
+                        <StatusDot status={run.status} />
+                        <span style={{ color: statusColor(run.status) }} className="capitalize">{run.status || 'unknown'}</span>
+                      </span>
+                    </div>
                   </div>
                 );
               })}
-              <button onClick={() => navigate('/changes')} className="text-xs text-[#6c5ce7] hover:underline pt-1">
-                View all changes &rarr;
-              </button>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Provider coverage breakdown */}
-      {!providerLoading && Object.keys(providerCoverage).length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-[#5c5c5e] mb-3">Provider Breakdown</h2>
-          <div className="rounded-xl bg-[hsl(var(--card))] border border-[hsl(var(--border))] p-5 space-y-3">
-            {Object.entries(providerCoverage).sort(([,a], [,b]) => b - a).slice(0, showAllProviders ? undefined : 5).map(([provider, count]) => {
-              const total = Object.values(providerCoverage).reduce((s, c) => s + c, 0);
-              const pct = Math.round((count / total) * 100);
-              return (
-                <div key={provider}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: providerColor(provider) }} />
-                      <span className="capitalize">{provider}</span>
+        {/* Right column */}
+        <div className="space-y-4">
+
+          {/* Resources by plugin */}
+          <div className="rounded-xl p-5" style={card}>
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-[#5c5c5e] mb-3">By Plugin</h2>
+            {Object.keys(resourcesByPlugin).length === 0 ? (
+              <p className="text-[#5c5c5e] text-sm py-1">
+                {scopes.length > 0 ? 'Run discovery to index resources.' : 'No scopes yet.'}
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {Object.entries(resourcesByPlugin).sort(([,a],[,b]) => b - a).map(([plugin, count]) => {
+                  const max = Math.max(...Object.values(resourcesByPlugin), 1);
+                  return (
+                    <div key={plugin}>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="font-medium capitalize">{plugin}</span>
+                        <span className="text-[#8b8b8e] tabular-nums">{count}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'hsl(var(--secondary))' }}>
+                        <div className="h-full rounded-full transition-all"
+                          style={{ width: `${(count / max) * 100}%`, background: pluginColor(plugin) }} />
+                      </div>
                     </div>
-                    <span className="text-[hsl(var(--muted-foreground))]">{count} ({pct}%)</span>
-                  </div>
-                  <div className="h-1.5 bg-[hsl(var(--border))] rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${pct}%`, background: providerColor(provider) }} />
-                  </div>
-                </div>
-              );
-            })}
-            {Object.keys(providerCoverage).length > 5 && (
-              <button onClick={() => setShowAllProviders(!showAllProviders)} className="text-xs text-[#6c5ce7] hover:underline pt-1">
-                {showAllProviders ? 'Show less' : `Show all ${Object.keys(providerCoverage).length} providers`}
-              </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Compliance snapshot */}
+          <div className="rounded-xl p-5" style={card}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#5c5c5e]">Compliance</h2>
+              <button className="text-xs text-[#6c5ce7] hover:underline" onClick={() => navigate('/compliance')}>View →</button>
+            </div>
+            {openFindings.length === 0 ? (
+              <p className="text-[#5c5c5e] text-sm py-1">
+                {findings.length === 0 ? 'No findings yet.' : '✓ No open findings.'}
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {(['critical','high','medium','low'] as const).map(sev => {
+                  const n = openFindings.filter(f => f.severity === sev).length;
+                  if (n === 0) return null;
+                  const color = { critical: '#ff4757', high: '#ff6b35', medium: '#ffa502', low: '#8b8b8e' }[sev];
+                  return (
+                    <div key={sev} className="flex items-center justify-between text-sm">
+                      <span className="capitalize" style={{ color }}>{sev}</span>
+                      <span className="font-semibold tabular-nums" style={{ color }}>{n}</span>
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Scopes strip */}
+      <div className="rounded-xl p-5" style={card}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-[#5c5c5e]">Scopes</h2>
+          <button className="text-xs text-[#6c5ce7] hover:underline" onClick={() => navigate('/discovery')}>Manage →</button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+          {scopes.map(scope => (
+            <div key={scope.id}
+              className="px-3 py-2.5 rounded-lg text-sm cursor-pointer hover:bg-white/5 transition-colors"
+              style={{ background: 'hsl(var(--secondary))', border: '1px solid hsl(var(--border))' }}
+              onClick={() => navigate('/discovery')}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-5 h-5 rounded flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: `${pluginColor(scope.plugin_name)}22`, color: pluginColor(scope.plugin_name) }}>
+                  {(scope.plugin_name ?? '?')[0].toUpperCase()}
+                </span>
+                <span className="font-medium truncate text-xs">{scope.name}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-[#8b8b8e]">
+                <span>{scope.resource_count} resources</span>
+                <span>{scope.schedule || 'manual'}</span>
+              </div>
+            </div>
+          ))}
+          <div
+            className="px-3 py-2.5 rounded-lg text-sm cursor-pointer hover:bg-white/5 transition-colors flex items-center gap-2 opacity-40 hover:opacity-80"
+            style={{ border: '1px dashed hsl(var(--border))' }}
+            onClick={() => navigate('/discovery')}>
+            <span className="text-[#6c5ce7] text-base">+</span>
+            <span className="text-[#8b8b8e] text-xs">Add scope</span>
+          </div>
+        </div>
+      </div>
+
+      {/* System health */}
+      {health && <SystemHealth health={health} />}
     </div>
   );
 }
 
-// ─── Subcomponents ───────────────────────────────────────────────────────────
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ title, value, subtitle, icon }: { title: string; value: number; subtitle: string; icon: React.ReactNode }) {
+function StatTile({ label, value, sub, icon, accent, onClick, valueSmall }: {
+  label: string;
+  value: number | string;
+  sub: string;
+  icon: string;
+  accent?: string;
+  onClick?: () => void;
+  valueSmall?: boolean;
+}) {
   return (
-    <div className="rounded-xl bg-[hsl(var(--card))] border border-[hsl(var(--border))] p-5 hover:border-[hsl(var(--muted-foreground))/30] transition-all">
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-8 h-8 rounded-lg bg-[hsl(var(--muted))] flex items-center justify-center">{icon}</div>
-        <span className="text-sm text-[hsl(var(--muted-foreground))]">{title}</span>
+    <div
+      className="rounded-xl p-4 cursor-pointer hover:bg-white/5 transition-colors"
+      style={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+      onClick={onClick}>
+      <div className="flex items-start justify-between mb-2">
+        <span className="text-lg leading-none">{icon}</span>
+        <span className="text-xs text-[#5c5c5e] uppercase tracking-wider">{label}</span>
       </div>
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="text-xs text-[#5c5c5e] mt-1">{subtitle}</div>
+      <div
+        className={`font-bold tabular-nums leading-tight ${valueSmall ? 'text-xl' : 'text-3xl'}`}
+        style={accent ? { color: accent } : undefined}>
+        {value}
+      </div>
+      <div className="text-xs text-[#8b8b8e] mt-1 truncate">{sub}</div>
     </div>
   );
 }
 
-function QuickAction({ onClick, label, icon }: { onClick: () => void; label: string; icon: React.ReactNode }) {
+function SystemHealth({ health }: { health: HealthStatus }) {
+  const components = Object.entries(health.components);
+  const allOk = health.status === 'ok';
   return (
-    <button onClick={onClick} className="rounded-xl bg-[hsl(var(--card))] border border-[hsl(var(--border))] p-4 flex items-center gap-3 hover:border-[#6c5ce7]/30 hover:bg-[#6c5ce7]/5 transition-all group text-left">
-      <div className="w-9 h-9 rounded-lg bg-[hsl(var(--muted))] flex items-center justify-center group-hover:bg-[#6c5ce7]/10 transition-all shrink-0">
-        {icon}
+    <div className="rounded-xl p-4" style={{
+      background: 'hsl(var(--card))',
+      border: `1px solid ${allOk ? 'hsl(var(--border))' : 'rgba(255,71,87,.3)'}`,
+    }}>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full"
+            style={{ background: allOk ? '#2ed573' : '#ff4757' }} />
+          <span className="text-sm font-medium">
+            {allOk ? 'All systems operational' : 'System degraded'}
+          </span>
+          <span className="text-xs text-[#5c5c5e]">v{health.version}</span>
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          {components.map(([name, comp]) => (
+            <div key={name} className="flex items-center gap-1.5 text-xs">
+              <span className="w-1.5 h-1.5 rounded-full" style={{
+                background: comp.status === 'ok' ? '#2ed573' : comp.status === 'disabled' ? '#5c5c5e' : '#ff4757',
+              }} />
+              <span className="capitalize text-[#8b8b8e]">{name}</span>
+              {comp.status !== 'ok' && (
+                <span style={{ color: comp.status === 'disabled' ? '#5c5c5e' : '#ff4757' }}>
+                  {comp.status}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-      <span className="text-sm font-medium">{label}</span>
-    </button>
+    </div>
   );
 }
 
-// ─── Icons (inline, no dependency on Icons.tsx for new icons) ────────────────
-
-function ActivityIcon() {
-  return (
-    <svg className="w-5 h-5 text-[hsl(var(--muted-foreground))]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5" />
-    </svg>
-  );
-}
-
-function GraphIcon() {
-  return (
-    <svg className="w-5 h-5 text-[hsl(var(--muted-foreground))]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-    </svg>
-  );
-}
-
-function PlugIcon() {
-  return (
-    <svg className="w-5 h-5 text-[hsl(var(--muted-foreground))]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0zM15 12l-3-3m3 3l-3 3" />
-    </svg>
-  );
-}
+export default Dashboard;
