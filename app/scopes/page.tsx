@@ -28,9 +28,9 @@ export default function ScopesPage() {
   const loadScopes = useCallback(() => {
     if (!token) return;
     setLoading(true);
-    apiGet<Scope[]>('/discovery/scopes', token)
+    apiGet<{scopes: Scope[]}>('/discovery/scopes', token)
       .then((data) => {
-        setScopes(data);
+        setScopes(data?.scopes ?? []);
         setError(null);
       })
       .catch((err: unknown) =>

@@ -1,10 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  experimental: {
+    turbopackRoot: "/Users/simonbalazs/Desktop/git/zerelio/console",
+  } as any,
   turbopack: {
+    root: "/Users/simonbalazs/Desktop/git/zerelio/console",
     rules: {
       "*.css": {
         loaders: ["@tailwindcss/turbopack"],

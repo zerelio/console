@@ -60,15 +60,15 @@ export default function DashboardPage() {
     if (!token) return;
     setLoading(true);
     Promise.all([
-      apiGet<Plugin[]>('/discovery/plugins', token),
-      apiGet<Scope[]>('/discovery/scopes', token),
-      apiGet<DiscoveryRun[]>('/discovery/runs', token),
+      apiGet<{plugins: Plugin[]}>('/discovery/plugins', token),
+      apiGet<{scopes: Scope[]}>('/discovery/scopes', token),
+      apiGet<DiscoveryRun[] | null>('/discovery/runs', token),
       apiGet<HealthStatus>('/health', token),
     ])
       .then(([p, s, r, h]) => {
-        setPlugins(p);
-        setScopes(s);
-        setRuns(r);
+        setPlugins(p?.plugins ?? []);
+        setScopes(s?.scopes ?? []);
+        setRuns(Array.isArray(r) ? r : []);
         setHealth(h);
         setError(null);
       })

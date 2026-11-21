@@ -25,12 +25,12 @@ export default function PluginsPage() {
   useEffect(() => {
     if (!token) return;
     Promise.all([
-      apiGet<Plugin[]>('/discovery/plugins', token),
-      apiGet<Scope[]>('/discovery/scopes', token),
+      apiGet<{plugins: Plugin[]}>('/discovery/plugins', token),
+      apiGet<{scopes: Scope[]}>('/discovery/scopes', token),
     ])
       .then(([p, s]) => {
-        setPlugins(p);
-        setScopes(s);
+        setPlugins(p?.plugins ?? []);
+        setScopes(s?.scopes ?? []);
         setError(null);
       })
       .catch((err: unknown) =>

@@ -87,12 +87,12 @@ export default function RunsPage() {
   useEffect(() => {
     if (!token) return;
     Promise.all([
-      apiGet<DiscoveryRun[]>('/discovery/runs', token),
-      apiGet<Scope[]>('/discovery/scopes', token),
+      apiGet<DiscoveryRun[] | null>('/discovery/runs', token),
+      apiGet<{scopes: Scope[]}>('/discovery/scopes', token),
     ])
       .then(([r, s]) => {
-        setRuns(r);
-        setScopes(s);
+        setRuns(Array.isArray(r) ? r : []);
+        setScopes(s?.scopes ?? []);
         setError(null);
       })
       .catch((err: unknown) =>
